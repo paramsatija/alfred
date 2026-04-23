@@ -480,6 +480,25 @@ python -m alfred.main
 
 ---
 
+## ROBUSTNESS FIXES (v2.1)
+
+All 10 critical issues identified in the architecture review have been fixed:
+
+| # | Issue | Fix |
+|---|-------|-----|
+| 1 | Slack bot blocks during agent sessions | Heavy tasks (research, link processing) run in daemon threads via `_run_in_background()` |
+| 2 | Prompt caching wasted on Haiku | `cache_control` only applied for Sonnet+ (Haiku needs 4096+ tokens to cache) |
+| 3 | `_call_with_search` broken (no tool loop) | Full tool use loop: send → tool_use → feed results → repeat until `end_turn` |
+| 4 | Token budget ignores agent sessions | Shared module-level counter in `brain/api.py`; agent.py calls `add_tokens()` on usage events |
+| 5 | Memory race condition | `threading.Lock` + atomic writes (tempfile → `os.replace`) |
+| 6 | Dedup silently drops messages | Split into `is_duplicate()` (check-only) and `mark_seen()` (called after successful handling) |
+| 7 | `App()` crashes at import time | `App` created lazily inside `start()`, not at module scope |
+| 8 | No conversation context | Thread history tracked per `thread_ts`; passed to `brain.chat()` for multi-turn |
+| 9 | Briefing crashes without Managed Agent | Falls back to `Brain.generate_briefing()` using web_search tool loop |
+| 10 | Scheduler used stale `brain.reset_daily_budget()` | Uses module-level `reset_tokens()` from `brain/api.py` |
+
+---
+
 ## FUTURE CONSIDERATIONS
 
 1. **Serverless migration** — Railway runs 24/7 but ALFRED only does work when messages arrive or cron fires. A serverless function for Slack events + Routines for cron could reduce costs to near-zero.

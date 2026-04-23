@@ -1,14 +1,16 @@
 """Persistent memory — JSON file store with built-in deduplication.
 
 Stores preferences, research history, seen URLs, ideas, and tasks.
-Designed to be swapped out for Mem0 or a database later without
-changing the interface.
+Uses a threading lock + atomic writes to prevent corruption from
+concurrent Slack event handlers.
 """
 
 import hashlib
 import json
 import os
+import tempfile
 import time
+import threading
 import logging
 from alfred.config import Config
 
@@ -16,7 +18,6 @@ log = logging.getLogger("alfred.memory")
 
 MEMORY_FILE = os.path.join(Config.DATA_DIR, "memory.json")
 
-# Default structure for a fresh memory store
 _DEFAULTS = {
     "users": {},
     "research_history": [],
@@ -42,6 +43,7 @@ _DEFAULTS = {
 
 class MemoryStore:
     def __init__(self):
+        self._lock = threading.Lock()
         self._data = self._load()
 
     def _load(self) -> dict:
@@ -49,7 +51,6 @@ class MemoryStore:
             try:
                 with open(MEMORY_FILE, "r") as f:
                     data = json.load(f)
-                # Ensure all default keys exist (forward-compat)
                 for key, default in _DEFAULTS.items():
                     data.setdefault(key, default)
                 return data
@@ -58,37 +59,54 @@ class MemoryStore:
         return dict(_DEFAULTS)
 
     def _save(self):
+        """Atomic write: write to temp file then rename (prevents corruption)."""
         os.makedirs(os.path.dirname(MEMORY_FILE), exist_ok=True)
-        with open(MEMORY_FILE, "w") as f:
-            json.dump(self._data, f, indent=2)
+        fd, tmp_path = tempfile.mkstemp(
+            dir=os.path.dirname(MEMORY_FILE), suffix=".tmp"
+        )
+        try:
+            with os.fdopen(fd, "w") as f:
+                json.dump(self._data, f, indent=2)
+            os.replace(tmp_path, MEMORY_FILE)
+        except Exception:
+            os.unlink(tmp_path)
+            raise
 
     # ── Generic key-value ────────────────────────────────────────────────
 
     def remember(self, key: str, value):
-        self._data[key] = value
-        self._save()
+        with self._lock:
+            self._data[key] = value
+            self._save()
 
     def recall(self, key: str, default=None):
         return self._data.get(key, default)
 
-    # ── Deduplication ────────────────────────────────────────────────────
+    # ── Deduplication (check-only vs. check-and-mark) ────────────────────
 
     def is_duplicate(self, content: str, ttl_hours: int = 24) -> bool:
-        """Check if this content was seen within ttl_hours."""
+        """Check if content was seen recently. Does NOT register it.
+
+        Call mark_seen() after successfully processing the message
+        so legitimate retries aren't swallowed.
+        """
         content_hash = hashlib.sha256(content.encode()).hexdigest()[:16]
-        seen = self._data["seen_hashes"]
+        seen = self._data.get("seen_hashes", {})
 
         if content_hash in seen:
             if time.time() - seen[content_hash] < ttl_hours * 3600:
                 return True
-
-        seen[content_hash] = time.time()
-        self._prune_hashes()
-        self._save()
         return False
 
+    def mark_seen(self, content: str):
+        """Register content as processed. Call after successful handling."""
+        content_hash = hashlib.sha256(content.encode()).hexdigest()[:16]
+        with self._lock:
+            self._data["seen_hashes"][content_hash] = time.time()
+            self._prune_hashes()
+            self._save()
+
     def _prune_hashes(self):
-        """Remove hashes older than 48 hours."""
         cutoff = time.time() - 48 * 3600
         self._data["seen_hashes"] = {
             k: v for k, v in self._data["seen_hashes"].items() if v > cutoff
@@ -97,18 +115,20 @@ class MemoryStore:
     # ── Research ─────────────────────────────────────────────────────────
 
     def add_research(self, topic: str, summary: str, urls: list[str]):
-        entry = {"topic": topic, "summary": summary[:500], "urls": urls, "ts": time.time()}
-        self._data["research_history"].append(entry)
-        self._data["research_history"] = self._data["research_history"][-100:]
-        self._save()
+        with self._lock:
+            entry = {"topic": topic, "summary": summary[:500], "urls": urls, "ts": time.time()}
+            self._data["research_history"].append(entry)
+            self._data["research_history"] = self._data["research_history"][-100:]
+            self._save()
 
     # ── URLs ─────────────────────────────────────────────────────────────
 
     def add_seen_url(self, url: str):
-        if url not in self._data["seen_urls"]:
-            self._data["seen_urls"].append(url)
-            self._data["seen_urls"] = self._data["seen_urls"][-1000:]
-            self._save()
+        with self._lock:
+            if url not in self._data["seen_urls"]:
+                self._data["seen_urls"].append(url)
+                self._data["seen_urls"] = self._data["seen_urls"][-1000:]
+                self._save()
 
     def has_seen_url(self, url: str) -> bool:
         return url in self._data["seen_urls"]
@@ -116,8 +136,9 @@ class MemoryStore:
     # ── Ideas ────────────────────────────────────────────────────────────
 
     def add_idea(self, idea: str, score: str):
-        self._data["ideas"].append({"idea": idea[:200], "score": score, "ts": time.time()})
-        self._save()
+        with self._lock:
+            self._data["ideas"].append({"idea": idea[:200], "score": score, "ts": time.time()})
+            self._save()
 
     # ── Topics ───────────────────────────────────────────────────────────
 
@@ -127,7 +148,6 @@ class MemoryStore:
     # ── Briefing context ─────────────────────────────────────────────────
 
     def get_briefing_context(self) -> str:
-        """Build a context string for the morning briefing agent session."""
         ideas = self._data.get("ideas", [])[-5:]
         research = self._data.get("research_history", [])[-5:]
 

@@ -63,7 +63,7 @@ def main():
     research = ResearchEngine(brain, memory)
 
     log.info("Initializing briefing generator...")
-    briefing = BriefingGenerator(memory)
+    briefing = BriefingGenerator(brain, memory)
 
     # Check Managed Agent status
     if Config.has_agent():
@@ -78,7 +78,7 @@ def main():
 
     # Wire dependencies into Slack bot and scheduler
     slack_bot.set_dependencies(brain, classifier, link_processor, research, memory)
-    scheduler_jobs.set_dependencies(briefing, brain)
+    scheduler_jobs.set_dependencies(briefing)
 
     # Start scheduler
     log.info("Starting scheduler...")

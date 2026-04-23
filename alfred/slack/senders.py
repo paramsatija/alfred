@@ -1,4 +1,8 @@
-"""Slack message senders — post to channels and DMs by name."""
+"""Slack message senders — post to channels and DMs by name.
+
+Client is created lazily on first use (not at import time) so the
+module can be imported before Config is fully loaded.
+"""
 
 import logging
 from slack_sdk import WebClient
@@ -6,9 +10,15 @@ from alfred.config import Config
 
 log = logging.getLogger("alfred.slack.senders")
 
-client = WebClient(token=Config.SLACK_BOT_TOKEN)
-
+_client: WebClient | None = None
 _channel_cache: dict[str, str] = {}
+
+
+def _get_client() -> WebClient:
+    global _client
+    if _client is None:
+        _client = WebClient(token=Config.SLACK_BOT_TOKEN)
+    return _client
 
 
 def _resolve_channel(name: str) -> str | None:
@@ -18,7 +28,7 @@ def _resolve_channel(name: str) -> str | None:
 
     clean_name = name.lstrip("#")
     try:
-        result = client.conversations_list(types="public_channel", limit=200)
+        result = _get_client().conversations_list(types="public_channel", limit=200)
         for ch in result["channels"]:
             if ch["name"] == clean_name:
                 _channel_cache[name] = ch["id"]
@@ -35,7 +45,6 @@ def post_message(channel_name: str, text: str, thread_ts: str = None):
         log.error(f"Channel not found: {channel_name}")
         return None
 
-    # Slack has a 4000-char limit per message; split if needed
     if len(text) > 3900:
         chunks = [text[i:i + 3900] for i in range(0, len(text), 3900)]
         for chunk in chunks:
@@ -43,7 +52,7 @@ def post_message(channel_name: str, text: str, thread_ts: str = None):
         return
 
     try:
-        return client.chat_postMessage(
+        return _get_client().chat_postMessage(
             channel=channel_id,
             text=text,
             thread_ts=thread_ts,
@@ -73,8 +82,8 @@ def post_log(text: str):
 def dm_user(user_id: str, text: str):
     """Send a direct message to a user."""
     try:
-        result = client.conversations_open(users=[user_id])
+        result = _get_client().conversations_open(users=[user_id])
         dm_channel = result["channel"]["id"]
-        client.chat_postMessage(channel=dm_channel, text=text)
+        _get_client().chat_postMessage(channel=dm_channel, text=text)
     except Exception as e:
         log.error(f"Failed to DM user {user_id}: {e}")

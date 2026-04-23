@@ -25,6 +25,7 @@ import logging
 import anthropic
 from alfred.config import Config
 from alfred.brain.prompts import AGENT_SYSTEM_PROMPT
+from alfred.brain.api import add_tokens
 
 log = logging.getLogger("alfred.brain.agent")
 
@@ -129,6 +130,13 @@ def run_session(task: str, timeout_events: int = 200) -> str:
                     tool_name = getattr(event, "name", "unknown")
                     tools_used.append(tool_name)
                     log.info(f"Agent using tool: {tool_name}")
+
+                elif event.type == "usage":
+                    input_t = getattr(event, "input_tokens", 0) or 0
+                    output_t = getattr(event, "output_tokens", 0) or 0
+                    if input_t + output_t > 0:
+                        add_tokens(input_t + output_t)
+                        log.info(f"Agent session tokens: +{input_t + output_t}")
 
                 elif event.type == "session.status_idle":
                     log.info(

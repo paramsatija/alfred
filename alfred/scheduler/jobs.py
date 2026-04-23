@@ -2,19 +2,17 @@
 
 import logging
 from alfred.briefing.generator import BriefingGenerator
-from alfred.brain.api import Brain
+from alfred.brain.api import reset_tokens
 from alfred.slack.senders import post_log
 
 log = logging.getLogger("alfred.scheduler")
 
 briefing_generator: BriefingGenerator | None = None
-brain: Brain | None = None
 
 
-def set_dependencies(briefing: BriefingGenerator, brain_instance: Brain):
-    global briefing_generator, brain
+def set_dependencies(briefing: BriefingGenerator):
+    global briefing_generator
     briefing_generator = briefing
-    brain = brain_instance
 
 
 def morning_briefing_job():
@@ -28,8 +26,7 @@ def morning_briefing_job():
 
 def reset_token_budget_job():
     log.info("Resetting daily token budget")
-    if brain:
-        brain.reset_daily_budget()
+    reset_tokens()
     post_log("Daily token budget reset. New day, Batman.")
 
 
