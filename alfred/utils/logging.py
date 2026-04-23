@@ -1,10 +1,11 @@
+"""Structured logging for ALFRED."""
+
 import logging
 import sys
 from alfred.config import Config
 
 
 def setup_logging():
-    """Configure structured logging for ALFRED."""
     level = getattr(logging, Config.LOG_LEVEL.upper(), logging.INFO)
 
     formatter = logging.Formatter(
@@ -20,8 +21,7 @@ def setup_logging():
     root.addHandler(handler)
 
     # Quiet down noisy libraries
-    logging.getLogger("httpx").setLevel(logging.WARNING)
-    logging.getLogger("slack_bolt").setLevel(logging.WARNING)
-    logging.getLogger("slack_sdk").setLevel(logging.WARNING)
+    for lib in ("httpx", "slack_bolt", "slack_sdk", "anthropic"):
+        logging.getLogger(lib).setLevel(logging.WARNING)
 
     return root

@@ -1,17 +1,14 @@
-"""Scheduled jobs — morning briefing, token reset, auto-research."""
-
-from typing import Optional
+"""Scheduled jobs — morning briefing, token reset, health check."""
 
 import logging
 from alfred.briefing.generator import BriefingGenerator
-from alfred.brain.client import Brain
+from alfred.brain.api import Brain
 from alfred.slack.senders import post_log
 
 log = logging.getLogger("alfred.scheduler")
 
-# Will be set by main.py
-briefing_generator: Optional[BriefingGenerator] = None
-brain: Optional[Brain] = None
+briefing_generator: BriefingGenerator | None = None
+brain: Brain | None = None
 
 
 def set_dependencies(briefing: BriefingGenerator, brain_instance: Brain):
@@ -21,7 +18,6 @@ def set_dependencies(briefing: BriefingGenerator, brain_instance: Brain):
 
 
 def morning_briefing_job():
-    """Triggered at wake time — generates and posts morning briefing."""
     log.info("Morning briefing job triggered")
     try:
         briefing_generator.generate_and_post()
@@ -31,13 +27,11 @@ def morning_briefing_job():
 
 
 def reset_token_budget_job():
-    """Triggered at midnight — resets daily token budget."""
     log.info("Resetting daily token budget")
     if brain:
         brain.reset_daily_budget()
-    post_log("Daily token budget reset. New day, new budget.")
+    post_log("Daily token budget reset. New day, Batman.")
 
 
 def health_check_job():
-    """Triggered every 30 min — posts heartbeat to logs."""
     log.info("Health check: ALFRED is alive")

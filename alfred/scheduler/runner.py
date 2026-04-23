@@ -14,13 +14,10 @@ log = logging.getLogger("alfred.scheduler")
 
 
 def start_scheduler() -> BackgroundScheduler:
-    """Start all scheduled jobs."""
     scheduler = BackgroundScheduler(timezone=Config.TIMEZONE)
 
-    # Parse wake time (e.g., "10:00")
     hour, minute = Config.WAKE_TIME.split(":")
 
-    # Morning briefing at wake time
     scheduler.add_job(
         morning_briefing_job,
         CronTrigger(hour=int(hour), minute=int(minute)),
@@ -29,7 +26,6 @@ def start_scheduler() -> BackgroundScheduler:
         replace_existing=True,
     )
 
-    # Reset token budget at midnight
     scheduler.add_job(
         reset_token_budget_job,
         CronTrigger(hour=0, minute=0),
@@ -38,7 +34,6 @@ def start_scheduler() -> BackgroundScheduler:
         replace_existing=True,
     )
 
-    # Health check every 30 minutes
     scheduler.add_job(
         health_check_job,
         CronTrigger(minute="*/30"),

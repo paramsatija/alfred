@@ -5,7 +5,9 @@ load_dotenv()
 
 
 class Config:
-    # Anthropic
+    """Central configuration — all settings pulled from environment."""
+
+    # Anthropic API
     ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
     # Slack
@@ -13,13 +15,12 @@ class Config:
     SLACK_SIGNING_SECRET = os.getenv("SLACK_SIGNING_SECRET", "")
     SLACK_APP_TOKEN = os.getenv("SLACK_APP_TOKEN", "")
 
-    # Brave Search
-    BRAVE_SEARCH_API_KEY = os.getenv("BRAVE_SEARCH_API_KEY", "")
+    # Managed Agent IDs (created by setup_agent.py)
+    AGENT_ID = os.getenv("ALFRED_AGENT_ID", "")
+    ENVIRONMENT_ID = os.getenv("ALFRED_ENVIRONMENT_ID", "")
 
-    # OpenAI (Whisper)
+    # Optional API keys for future phases
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-
-    # Alpaca
     ALPACA_API_KEY = os.getenv("ALPACA_API_KEY", "")
     ALPACA_SECRET_KEY = os.getenv("ALPACA_SECRET_KEY", "")
 
@@ -29,12 +30,14 @@ class Config:
     DAILY_TOKEN_BUDGET = int(os.getenv("ALFRED_DAILY_TOKEN_BUDGET", "500000"))
     LOG_LEVEL = os.getenv("ALFRED_LOG_LEVEL", "INFO")
 
-    # Model IDs
+    # Models — Haiku for cheap classification, Sonnet for balanced work
     MODEL_HAIKU = "claude-haiku-4-5-20251001"
     MODEL_SONNET = "claude-sonnet-4-6-20260414"
-    MODEL_OPUS = "claude-opus-4-6-20260414"
 
-    # Channel names (will be resolved to IDs on startup)
+    # Managed Agent model (used for deep research, briefings, building)
+    AGENT_MODEL = "claude-sonnet-4-6"
+
+    # Slack channel names (resolved to IDs at runtime)
     CHANNELS = {
         "incoming": "#incoming",
         "briefing": "#daily-briefing",
@@ -54,6 +57,7 @@ class Config:
 
     @classmethod
     def validate(cls):
+        """Check that all required env vars are set."""
         missing = []
         if not cls.ANTHROPIC_API_KEY:
             missing.append("ANTHROPIC_API_KEY")
@@ -65,3 +69,8 @@ class Config:
             missing.append("SLACK_APP_TOKEN")
         if missing:
             raise ValueError(f"Missing required env vars: {', '.join(missing)}")
+
+    @classmethod
+    def has_agent(cls):
+        """Check if Managed Agent is configured."""
+        return bool(cls.AGENT_ID and cls.ENVIRONMENT_ID)

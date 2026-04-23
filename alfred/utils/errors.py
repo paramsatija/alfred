@@ -8,7 +8,7 @@ log = logging.getLogger("alfred.errors")
 
 
 def safe_handler(func):
-    """Decorator to catch and log errors without crashing the bot."""
+    """Decorator: catch and log errors without crashing the bot."""
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         try:

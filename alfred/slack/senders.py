@@ -1,4 +1,4 @@
-from typing import Dict, Optional
+"""Slack message senders — post to channels and DMs by name."""
 
 import logging
 from slack_sdk import WebClient
@@ -8,12 +8,11 @@ log = logging.getLogger("alfred.slack.senders")
 
 client = WebClient(token=Config.SLACK_BOT_TOKEN)
 
-# Channel name -> channel ID cache
-_channel_cache: Dict[str, str] = {}
+_channel_cache: dict[str, str] = {}
 
 
-def _resolve_channel(name: str) -> Optional[str]:
-    """Resolve channel name to ID."""
+def _resolve_channel(name: str) -> str | None:
+    """Resolve a channel name (e.g. '#daily-briefing') to its Slack ID."""
     if name in _channel_cache:
         return _channel_cache[name]
 
@@ -29,42 +28,45 @@ def _resolve_channel(name: str) -> Optional[str]:
     return None
 
 
-def post_message(channel_name: str, text: str, thread_ts: Optional[str] = None):
+def post_message(channel_name: str, text: str, thread_ts: str = None):
     """Post a message to a channel by name."""
     channel_id = _resolve_channel(channel_name)
     if not channel_id:
         log.error(f"Channel not found: {channel_name}")
+        return None
+
+    # Slack has a 4000-char limit per message; split if needed
+    if len(text) > 3900:
+        chunks = [text[i:i + 3900] for i in range(0, len(text), 3900)]
+        for chunk in chunks:
+            post_message(channel_name, chunk, thread_ts)
         return
 
     try:
-        result = client.chat_postMessage(
+        return client.chat_postMessage(
             channel=channel_id,
             text=text,
             thread_ts=thread_ts,
             unfurl_links=False,
         )
-        return result
     except Exception as e:
         log.error(f"Failed to post to {channel_name}: {e}")
+        return None
 
 
 def post_briefing(text: str):
-    """Post morning briefing to #daily-briefing."""
     post_message("#daily-briefing", text)
 
 
 def post_research(text: str):
-    """Post research output to #research."""
     post_message("#research", text)
 
 
 def post_idea(text: str):
-    """Post scored idea to #ideas."""
     post_message("#ideas", text)
 
 
 def post_log(text: str):
-    """Post internal log to #alfred-logs."""
     post_message("#alfred-logs", text)
 
 
